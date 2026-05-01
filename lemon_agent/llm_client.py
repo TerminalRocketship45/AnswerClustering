@@ -9,6 +9,8 @@ from typing import Any, Iterable, List, Optional
 
 from dotenv import load_dotenv
 
+from config import config
+
 try:
     import google.generativeai as genai
     from google.generativeai import types
@@ -20,10 +22,10 @@ except ImportError as exc:
 load_dotenv()
 
 API_KEY_ENV = "GEMINI_API_KEY"
-DEFAULT_MODEL = "gemini-2.0-flash"
-EMBEDDING_MODEL = "text-embedding-3-large"
-MAX_RETRIES = 3
-BASE_BACKOFF = 1.5
+DEFAULT_MODEL = config["model"]
+EMBEDDING_MODEL = config["embeddings_model"]
+MAX_RETRIES = config["retry_attempts"]
+BASE_BACKOFF = config["retry_backoff_seconds"]
 
 _configured = False
 
@@ -70,7 +72,7 @@ def _call_llm(
     prompt: str,
     model: str,
     system_instruction: Optional[str] = None,
-    max_output_tokens: int = 1600,
+    max_output_tokens: int = config["max_llm_tokens"],
     temperature: float = 0.3,
 ) -> str:
     _ensure_configured()
@@ -102,7 +104,7 @@ def generate_text(
     prompt: str,
     model: str,
     system_instruction: Optional[str] = None,
-    max_output_tokens: int = 1600,
+    max_output_tokens: int = config["max_llm_tokens"],
     temperature: float = 0.3,
 ) -> str:
     return _call_llm(
@@ -137,7 +139,7 @@ def generate_json(
     prompt: str,
     model: str,
     system_instruction: Optional[str] = None,
-    max_output_tokens: int = 1600,
+    max_output_tokens: int = config["max_llm_tokens"],
 ) -> Any:
     raw = _call_llm(prompt, model=model, system_instruction=system_instruction, max_output_tokens=max_output_tokens)
     try:
