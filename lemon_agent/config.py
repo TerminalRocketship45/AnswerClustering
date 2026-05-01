@@ -1,7 +1,7 @@
 config = {
     "model": "gemini-2.0-flash",
     "criteria_sample_size": 20,
-    "k_criteria": 6,
+    "k_criteria": 5,
     "features_per_criterion": 3,
     "batch_size": 10,
     "rating_levels": 2,
