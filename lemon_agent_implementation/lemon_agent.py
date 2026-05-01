@@ -12,16 +12,9 @@ Original Lisp (Mark Klein, MIT):
              (sexp     (parse-llm-output response)))
         sexp))
 
-The function:
-  1. Fetches the evaluation criteria for the solution (cost, risk, feasibility …).
-  2. Finds the purpose (goal / barrier / cause) that motivates the solution.
-  3. Builds a detailed prompt that asks the LLM to enumerate failure modes —
-     one per criterion — and rate each as HIGH or LOW risk for this solution.
-  4. Calls the LLM and parses the JSON response.
-  5. Returns the list of FailureMode dicts.
-
-"Lemons" in the original system are failure modes rated HIGH risk.  The caller
-can count lemons to decide whether to eliminate a solution from the candidate set.
+This module is a structural translation of that Lisp function into Python.
+It preserves the same logical steps: criteria lookup, purpose extraction,
+prompt construction, LLM invocation, and output parsing.
 """
 
 from __future__ import annotations
@@ -32,82 +25,82 @@ from gbsm import find_criteria, find_purpose, explain_purpose
 from llm_client import ask_llm, parse_llm_output
 
 
-# ---------------------------------------------------------------------------
-# Prompt builder  (mirrors the with-output-to-string block in the Lisp)
-# ---------------------------------------------------------------------------
-
 def _build_prompt(
     purpose: Optional[Purpose],
     criteria: list[Criterion],
     solution: Solution,
     hint: Optional[str],
 ) -> str:
-    """
-    Reconstruct the Lisp prompt-building logic in Python.
+    """Reconstruct the Lisp prompt-building block in Python with comments."""
 
-    The Lisp code uses (pr ...) to stream formatted text into a string.
-    Here we build the same string with an f-string / join approach.
-    """
+    # Start with an empty list of prompt lines, like accumulating text in a string.
     lines: list[str] = []
 
-    # --- Purpose context (explain-purpose) ---
+    # Add a description of the purpose, as the Lisp code does with explain-purpose.
     lines.append(explain_purpose(purpose))
-    lines.append("")
+    lines.append("")  # blank line for readability in the prompt
 
-    # --- Ask to enumerate failure modes ---
+    # Begin the instruction that asks for failure modes.
     lines.append("I want you to identify the different ways that we can fail to ")
 
+    # Add the actual target of failure analysis depending on the purpose type.
     if purpose is None:
+        # If no purpose was found, fall back to a generic objective.
         lines.append("achieve the intended objective.")
     elif purpose.ptype == "goal":
-        lines.append(f"achieve the goal: {purpose.name}")
-    else:  # barrier or cause
-        lines.append(f"overcome the problem: {purpose.name}")
+        # If the purpose is a goal, ask about failing to achieve that goal.
+        lines.append(f"achieve the goal {purpose.name}")
+    else:
+        # If the purpose is a barrier or cause, ask about overcoming the problem.
+        lines.append(f"Overcome the problem {purpose.name}")
 
     lines.append("")
 
-    # --- Criteria list ---
-    ptype_label = purpose.ptype if purpose else "objective"
+    # Explain that the following lines list the criteria for a good solution.
     lines.append(
-        f"These are the criteria that a good solution for this {ptype_label} "
+        f"These are the criteria that a good solution for this {purpose.ptype if purpose else 'objective'} "
         "would satisfy:"
     )
+
+    # Add each criterion line to the prompt, similar to the Lisp loop.
     for c in criteria:
-        desc = f" {c.description}" if c.description else ""
-        lines.append(f"- {c.eid} {c.name}{desc}")
+        description_text = f" {c.description}" if c.description else ""
+        lines.append(f"- {c.eid} {c.name}{description_text}")
 
     lines.append("")
 
-    # --- Instruction to enumerate per-criterion failure modes ---
+    # Ask the model to enumerate failure modes for each criterion.
     lines.append(
-        "I want you to enumerate, for each of the criteria, "
-        "the ways that we can fail to achieve these criteria."
+        "I want you to enumerate, for each of the criteria, the ways that we can fail to "
+        "achieve these criteria."
     )
     lines.append("")
-    lines.append(
-        "And I want you to tell me, for each failure mode, whether that failure "
-        "is highly likely to occur if we use the following solution:"
-    )
-    sol_desc = f" {solution.description}" if solution.description else ""
-    lines.append(f"{solution.name}{sol_desc}")
 
-    # --- Optional hint ---
+    # Ask the model to rate how likely each failure mode is for the proposed solution.
+    lines.append(
+        "And I want you to tell me, for each failure mode, whether that failure is "
+        "highly likely to occur if we use the following solution:"
+    )
+
+    # Include the solution name and optional description.
+    lines.append(f"{solution.name}{' ' + solution.description if solution.description else ''}")
+
     if hint:
+        # If a hint is provided, include it in the prompt.
         lines.append("")
         lines.append(
-            f"Do your best to incorporate this hint when defining the "
-            f"failure modes: {hint}"
+            f"Do your best to incorporate this hint when defining the failure modes: {hint}"
         )
 
-    # --- JSON schema instruction ---
     lines.append("")
+
+    # Instruct the LLM to format the output as JSON following the schema.
     lines.append(
-        "Give me your response as a JSON structure that gives the list of "
-        "failure modes you found, as follows:"
+        "Give me your response as a JSON structure that gives the list of failure modes you found, as follows:"
     )
     lines.append("```json")
     lines.append("[")
-    lines.append('{ ')
+    lines.append('{')
     lines.append('  "type": "failure",')
     lines.append('  "criterionName": <the name for the criterion affected by the failure mode>,')
     lines.append('  "criterionID": <the ID for the criterion affected by the failure mode>,')
@@ -118,50 +111,30 @@ def _build_prompt(
     lines.append('}]')
     lines.append("```")
 
+    # Join all prompt lines into a single string separated by newlines.
     return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# find_failure_modes  (direct translation of the Lisp defun)
-# ---------------------------------------------------------------------------
 
 def find_failure_modes(
     solution: Solution,
     hint: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """
-    Python translation of:
+    """Direct translation of the Lisp defun find-failure-modes."""
 
-        (defun find-failure-modes (solution &key hint) ...)
-
-    Returns a list of failure-mode dicts, each with keys:
-        type, criterionName, criterionID, description, name, risk, rationale
-
-    Failure modes where risk == "high" are the "lemons" — ideas the system
-    may later use to rank or eliminate dominated solutions.
-
-    Parameters
-    ----------
-    solution : Solution
-        The candidate solution to evaluate.
-    hint : str, optional
-        An optional free-text hint to guide the failure-mode generation
-        (e.g. "focus on implementation complexity").  A good hint can
-        surface lemons that the LLM might otherwise miss.
-    """
-    # Step 1: (find-criteria solution)
+    # Step 1: collect the criteria for the given solution.
     criteria: list[Criterion] = find_criteria(solution)
 
-    # Step 2: (find-if #'(lambda (p) (isa-p p '(goal barrier cause))) (gbsmcontext solution))
+    # Step 2: find the purpose object from the solution context.
     purpose: Optional[Purpose] = find_purpose(solution)
 
-    # Step 3: build prompt  (with-output-to-string block)
+    # Step 3: build the prompt text that will be sent to the LLM.
     prompt: str = _build_prompt(purpose, criteria, solution, hint)
 
-    # Step 4: (askLLM prompt)
+    # Step 4: send the prompt to the LLM and get the raw response.
     response: str = ask_llm(prompt)
 
-    # Step 5: (parse-llm-output response)
+    # Step 5: parse the LLM output into structured failure mode objects.
     failure_modes: list[dict[str, Any]] = parse_llm_output(response)
 
+    # Return the parsed failure modes to the caller.
     return failure_modes

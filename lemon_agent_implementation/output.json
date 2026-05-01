@@ -1,0 +1,110 @@
+Found 7 failure modes  (6 lemons, 1 low-risk)
+
+======================================================================
+LEMON [C1] Insufficient revenue for transit expansion
+  Criterion : Effective
+  Risk      : HIGH
+  Description: Revenue generated from congestion pricing may be insufficient to cover the costs of significant public transit expansion, failing to increase capacity enough to absorb demand.
+  Rationale : The projected revenue from congestion pricing might not be substantial enough to fund the large-scale infrastructure required for a major transit capacity increase. Public transit expansion is notoriously expensive, and the pricing model might not be aggressive enough to generate the necessary capital.
+
+LEMON [C2] Unsustainable transit operating costs
+  Criterion : Affordable
+  Risk      : HIGH
+  Description: The ongoing operational and maintenance costs of expanded public transit, even if initially funded by congestion pricing, may become a significant long-term burden on the city budget.
+  Rationale : While congestion pricing might fund initial expansion, the increased service frequency, new vehicles, and larger workforce required for expanded transit have substantial ongoing costs. Without a permanent, dedicated funding stream beyond congestion pricing, these costs could strain the general budget.
+
+LEMON [C3] Technological and implementation hurdles
+  Criterion : Feasible
+  Risk      : HIGH
+  Description: Implementing and enforcing a complex congestion pricing system, including technology for monitoring and billing, may prove technically challenging and resource-intensive.
+  Rationale : Setting up the necessary infrastructure for real-time traffic monitoring, variable fee calculation, billing, and enforcement is a significant technical undertaking. The complexity of managing such a system, especially in a large urban area, could lead to implementation delays and failures.
+
+LEMON [C4] Exacerbated socio-economic inequality
+  Criterion : Low-Risk
+  Risk      : HIGH
+  Description: Congestion pricing disproportionately impacts low-income drivers who may lack viable public transit alternatives, leading to significant equity concerns and social unrest.
+  Rationale : Low-income individuals often rely on private vehicles for essential travel due to limited access to or suitability of public transport, especially in underserved areas. The regressive nature of a flat fee can place an undue financial burden on these populations, potentially forcing them out of the city centre for work or necessities.
+
+      [C4] Modal shift and route diversion
+  Criterion : Low-Risk
+  Risk      : MEDIUM
+  Description: Drivers may divert to alternative routes or times, shifting congestion to less equipped areas rather than reducing it, or simply accepting the fee without altering behaviour.
+  Rationale : While some drivers will switch to public transit, others may simply reroute through residential or less congested, but perhaps less safe or efficient, streets. Others might accept the cost, diminishing the intended reduction in vehicle density. This outcome weakens the effectiveness of the core goal.
+
+LEMON [C5] Political and public opposition delays
+  Criterion : Timely
+  Risk      : HIGH
+  Description: Political opposition, public consultations, and the tendering process for technology can significantly delay the implementation of congestion pricing, preventing timely improvements to transit capacity.
+  Rationale : Congestion pricing is often a politically contentious policy, facing strong opposition from drivers, businesses, and advocacy groups. The extensive public discourse, necessary legislative approvals, and procurement processes required can stretch implementation timelines considerably, pushing back any benefits.
+
+LEMON [C6] Erosion of political and public support
+  Criterion : Sustainable
+  Risk      : HIGH
+  Description: Public and political will to maintain congestion pricing can erode over time, especially if perceived as unfair or if alternative transit options are not perceived as adequate, leading to its eventual repeal.
+  Rationale : Sustained public dissatisfaction, lobbying efforts by affected groups, or a perceived lack of tangible improvements in public transit can lead to political pressure to dismantle or significantly weaken the congestion pricing scheme. This makes the funding source for transit expansion unstable in the long term.
+
+--- Raw JSON ---
+[
+  {
+    "type": "failure",
+    "criterionName": "Effective",
+    "criterionID": "C1",
+    "description": "Revenue generated from congestion pricing may be insufficient to cover the costs of significant public transit expansion, failing to increase capacity enough to absorb demand.",
+    "name": "Insufficient revenue for transit expansion",
+    "risk": "high",
+    "rationale": "The projected revenue from congestion pricing might not be substantial enough to fund the large-scale infrastructure required for a major transit capacity increase. Public transit expansion is notoriously expensive, and the pricing model might not be aggressive enough to generate the necessary capital."
+  },
+  {
+    "type": "failure",
+    "criterionName": "Affordable",
+    "criterionID": "C2",
+    "description": "The ongoing operational and maintenance costs of expanded public transit, even if initially funded by congestion pricing, may become a significant long-term burden on the city budget.",
+    "name": "Unsustainable transit operating costs",
+    "risk": "high",
+    "rationale": "While congestion pricing might fund initial expansion, the increased service frequency, new vehicles, and larger workforce required for expanded transit have substantial ongoing costs. Without a permanent, dedicated funding stream beyond congestion pricing, these costs could strain the general budget."
+  },
+  {
+    "type": "failure",
+    "criterionName": "Feasible",
+    "criterionID": "C3",
+    "description": "Implementing and enforcing a complex congestion pricing system, including technology for monitoring and billing, may prove technically challenging and resource-intensive.",
+    "name": "Technological and implementation hurdles",
+    "risk": "high",
+    "rationale": "Setting up the necessary infrastructure for real-time traffic monitoring, variable fee calculation, billing, and enforcement is a significant technical undertaking. The complexity of managing such a system, especially in a large urban area, could lead to implementation delays and failures."
+  },
+  {
+    "type": "failure",
+    "criterionName": "Low-Risk",
+    "criterionID": "C4",
+    "description": "Congestion pricing disproportionately impacts low-income drivers who may lack viable public transit alternatives, leading to significant equity concerns and social unrest.",
+    "name": "Exacerbated socio-economic inequality",
+    "risk": "high",
+    "rationale": "Low-income individuals often rely on private vehicles for essential travel due to limited access to or suitability of public transport, especially in underserved areas. The regressive nature of a flat fee can place an undue financial burden on these populations, potentially forcing them out of the city centre for work or necessities."
+  },
+  {
+    "type": "failure",
+    "criterionName": "Low-Risk",
+    "criterionID": "C4",
+    "description": "Drivers may divert to alternative routes or times, shifting congestion to less equipped areas rather than reducing it, or simply accepting the fee without altering behaviour.",
+    "name": "Modal shift and route diversion",
+    "risk": "medium",
+    "rationale": "While some drivers will switch to public transit, others may simply reroute through residential or less congested, but perhaps less safe or efficient, streets. Others might accept the cost, diminishing the intended reduction in vehicle density. This outcome weakens the effectiveness of the core goal."
+  },
+  {
+    "type": "failure",
+    "criterionName": "Timely",
+    "criterionID": "C5",
+    "description": "Political opposition, public consultations, and the tendering process for technology can significantly delay the implementation of congestion pricing, preventing timely improvements to transit capacity.",
+    "name": "Political and public opposition delays",
+    "risk": "high",
+    "rationale": "Congestion pricing is often a politically contentious policy, facing strong opposition from drivers, businesses, and advocacy groups. The extensive public discourse, necessary legislative approvals, and procurement processes required can stretch implementation timelines considerably, pushing back any benefits."
+  },
+  {
+    "type": "failure",
+    "criterionName": "Sustainable",
+    "criterionID": "C6",
+    "description": "Public and political will to maintain congestion pricing can erode over time, especially if perceived as unfair or if alternative transit options are not perceived as adequate, leading to its eventual repeal.",
+    "name": "Erosion of political and public support",
+    "risk": "high",
+    "rationale": "Sustained public dissatisfaction, lobbying efforts by affected groups, or a perceived lack of tangible improvements in public transit can lead to political pressure to dismantle or significantly weaken the congestion pricing scheme. This makes the funding source for transit expansion unstable in the long term."
+  }
