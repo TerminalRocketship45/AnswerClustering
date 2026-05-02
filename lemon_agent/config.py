@@ -1,5 +1,5 @@
 config = {
-    "model": "gemini-2.0-flash",
+    "model": "gemini-2.5-flash",
     "criteria_sample_size": 20,
     "k_criteria": 5,
     "failure_modes_per_criterion": 2,
@@ -18,5 +18,5 @@ config = {
     "criteria_list": None,  # list of criteria for multi-agent, or None
     "fewshot_samples_path": None,  # path to JSON file for few-shot samples, or None
     "rationale": False,  # if True, require rationale in ratings
-    "plot_mode": "failure_modes",  # "failure_modes" or "criteria"
+    "plot_mode": "criteria",  # "failure_modes" or "criteria"
 }

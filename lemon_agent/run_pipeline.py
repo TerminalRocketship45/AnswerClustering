@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -27,11 +28,20 @@ SAMPLE_IDEAS = [
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the Lemon Agent pipeline.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run in dry-run validation mode without making Gemini API calls.",
+    )
+    args = parser.parse_args()
+
     load_dotenv()
     output = run_full_pipeline(
         SAMPLE_IDEAS,
         problem_statement="Improve the sustainability and livability of an urban neighborhood.",
         documents=None,
+        dry_run=args.dry_run,
     )
 
     output_path = Path(__file__).resolve().parent / "lemon_agent_output.json"
