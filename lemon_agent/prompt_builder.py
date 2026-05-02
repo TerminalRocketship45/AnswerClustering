@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from .models import Criterion, Feature
+from .models import Criterion
 
 SYSTEM_PROMPT = (
     "You are a rigorous decision-analysis expert. Your job is to design and apply "
@@ -36,31 +36,6 @@ def build_criteria_prompt(
         "  ...",
         "]",
         f"Return exactly {k_criteria} criteria.",
-    ])
-    return "\n".join(prompt_lines)
-
-
-def build_feature_prompt(features_per_criterion: int, criteria: List[Criterion]) -> str:
-    prompt_lines = [
-        "For each evaluation criterion below, generate concrete yes/no questions that describe falsifiable failure conditions.",
-        "Each question should be reusable across ideas and should expose a specific way an idea could fail that criterion.",
-        "Do not use vague language such as 'might' or 'could potentially'. Instead use measurable, observable conditions.",
-        "Return exactly valid JSON in the format described.",
-        "",
-        "Criteria:",
-    ]
-
-    for criterion in criteria:
-        prompt_lines.append(f"- {criterion.eid}: {criterion.name} — {criterion.description}")
-
-    prompt_lines.extend([
-        "",
-        "Output schema:",
-        "[",
-        "  {\n    \"criterionID\": \"C1\",\n    \"criterionName\": \"Cost\",\n    \"question\": \"Does this solution require upfront infrastructure investment exceeding $10M?\"\n  },",
-        "  ...",
-        "]",
-        f"Generate exactly {features_per_criterion} questions per criterion.",
     ])
     return "\n".join(prompt_lines)
 
@@ -137,7 +112,7 @@ def build_failure_modes_prompt(
 
 def build_batch_evaluation_prompt(
     ideas: List[str],
-    features: List[Feature],
+    failure_modes: List[dict],
     rating_levels: int,
     retrieved_context: Optional[str] = None,
 ) -> str:
@@ -163,10 +138,10 @@ def build_batch_evaluation_prompt(
         prompt_lines.append(f"{index}. {idea}")
 
     prompt_lines.append("")
-    prompt_lines.append("Features:")
-    for index, feature in enumerate(features, start=1):
+    prompt_lines.append("Failure modes:")
+    for index, failure_mode in enumerate(failure_modes, start=1):
         prompt_lines.append(
-            f"{index}. [{feature.criterion_id}] {feature.criterion_name} — {feature.question}"
+            f"{index}. [{failure_mode['criterionID']}] {failure_mode['criterionName']} — {failure_mode['description']}"
         )
 
     prompt_lines.extend([
@@ -179,8 +154,8 @@ def build_batch_evaluation_prompt(
         "      {",
         "        \"criterionID\": \"C1\",",
         "        \"criterionName\": \"Cost\",",
-        "        \"features\": [",
-        "          {\n            \"feature\": \"Does this solution require upfront infrastructure investment exceeding $10M?\",\n            \"rating\": \"yes\",\n            \"reasoning\": \"Short chain-of-thought rationale.\"\n          },",
+        "        \"failureModes\": [",
+        "          {\n            \"failureMode\": \"Does this solution require upfront infrastructure investment exceeding $10M?\",\n            \"rating\": \"yes\",\n            \"reasoning\": \"Short chain-of-thought rationale.\"\n          },",
         "          ...",
         "        ]",
         "      },",

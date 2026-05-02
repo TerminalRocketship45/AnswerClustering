@@ -2,9 +2,8 @@ config = {
     "model": "gemini-2.0-flash",
     "criteria_sample_size": 20,
     "k_criteria": 5,
-    "features_per_criterion": 3,
     "failure_modes_per_criterion": 2,
-    "failure_mode_style": "statement", #statement or question
+    "failure_mode_style": "statement",  # statement or question
     "batch_size": 10,
     "rating_levels": 2,
     "vector_mode": "failure_modes",

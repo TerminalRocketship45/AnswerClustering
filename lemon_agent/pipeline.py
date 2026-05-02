@@ -11,8 +11,7 @@ from .llm_client import generate_json
 from .models import (
     Criterion,
     FailureMode,
-    Feature,
-    FeatureResult,
+    FailureModeResult,
     CriterionEvaluation,
     IdeaEvaluation,
 )
@@ -20,7 +19,6 @@ from .prompt_builder import (
     SYSTEM_PROMPT,
     build_batch_evaluation_prompt,
     build_criteria_prompt,
-    build_feature_prompt,
     build_failure_modes_prompt,
 )
 from .rag import build_document_store, retrieve_context, search_fallback
@@ -56,29 +54,6 @@ def generate_criteria(
             )
         )
     return criteria
-
-
-def generate_features(
-    criteria: List[Criterion],
-    features_per_criterion: int,
-) -> List[Feature]:
-    prompt = build_feature_prompt(features_per_criterion, criteria)
-    raw_features = generate_json(
-        prompt,
-        model=config["model"],
-        system_instruction=SYSTEM_PROMPT,
-        max_output_tokens=config["max_llm_tokens"],
-    )
-    features: List[Feature] = []
-    for item in raw_features:
-        features.append(
-            Feature(
-                criterion_id=item.get("criterionID", ""),
-                criterion_name=item.get("criterionName", ""),
-                question=item.get("question", ""),
-            )
-        )
-    return features
 
 
 def generate_failure_modes(
@@ -124,13 +99,6 @@ def generate_failure_modes(
     return [grouped.get(idea, []) for idea in ideas]
 
 
-def _group_features_by_criterion(features: List[Feature]) -> Dict[str, List[Feature]]:
-    grouped: Dict[str, List[Feature]] = {}
-    for feature in features:
-        grouped.setdefault(feature.criterion_id, []).append(feature)
-    return grouped
-
-
 def _rating_to_score(rating: str, rating_levels: int) -> float:
     normalized = rating.strip().lower()
     if rating_levels == 2:
@@ -150,11 +118,24 @@ def _rating_to_score(rating: str, rating_levels: int) -> float:
 
 def evaluate_batch(
     ideas: List[str],
-    features: List[Feature],
+    failure_modes: List[FailureMode],
     rating_levels: int,
     retrieved_context: Optional[str] = None,
 ) -> List[IdeaEvaluation]:
-    prompt = build_batch_evaluation_prompt(ideas, features, rating_levels, retrieved_context)
+    prompt = build_batch_evaluation_prompt(
+        ideas,
+        [
+            {
+                "criterionID": fm.criterionID,
+                "criterionName": fm.criterionName,
+                "name": fm.name,
+                "description": fm.description,
+            }
+            for fm in failure_modes
+        ],
+        rating_levels,
+        retrieved_context,
+    )
     raw_evaluations = generate_json(
         prompt,
         model=config["model"],
@@ -162,43 +143,29 @@ def evaluate_batch(
         max_output_tokens=config["max_llm_tokens"],
     )
 
-    grouped_features = _group_features_by_criterion(features)
     results: List[IdeaEvaluation] = []
     for idea_result in raw_evaluations:
         idea_text = idea_result.get("idea", "")
         evaluations: List[CriterionEvaluation] = []
         for ev in idea_result.get("evaluations", []):
-            feature_results: List[FeatureResult] = []
-            for feature_item in ev.get("features", []):
-                feature_results.append(
-                    FeatureResult(
-                        feature=feature_item.get("feature", ""),
-                        rating=feature_item.get("rating", "no"),
-                        reasoning=feature_item.get("reasoning", ""),
+            failure_mode_results: List[FailureModeResult] = []
+            for failure_item in ev.get("failureModes", []):
+                failure_mode_results.append(
+                    FailureModeResult(
+                        failure_mode=failure_item.get("failureMode", ""),
+                        rating=failure_item.get("rating", "no"),
+                        reasoning=failure_item.get("reasoning", ""),
                     )
                 )
             evaluations.append(
                 CriterionEvaluation(
                     criterionID=ev.get("criterionID", ""),
                     criterionName=ev.get("criterionName", ""),
-                    features=feature_results,
+                    failure_modes=failure_mode_results,
                 )
             )
         results.append(IdeaEvaluation(idea=idea_text, evaluations=evaluations))
     return results
-
-
-def _build_feature_vector(evaluation: IdeaEvaluation, features: List[Feature]) -> List[float]:
-    question_to_rating: Dict[str, str] = {}
-    for criterion_eval in evaluation.evaluations:
-        for feature_item in criterion_eval.features:
-            question_to_rating[feature_item.feature] = feature_item.rating
-
-    vector: List[float] = []
-    for feature in features:
-        rating = question_to_rating.get(feature.question, "no")
-        vector.append(_rating_to_score(rating, config["rating_levels"]))
-    return vector
 
 
 def _build_failure_mode_vector(
@@ -224,20 +191,16 @@ def _is_pareto_dominated(target: List[float], candidate: List[float]) -> bool:
 
 def assign_lemon_labels(
     evaluations: List[IdeaEvaluation],
-    features: List[Feature],
     criteria: List[Criterion],
 ) -> List[IdeaEvaluation]:
-    if config["vector_mode"] == "failure_modes":
-        expected_len = len(criteria) * config["failure_modes_per_criterion"]
-        vectors = [
-            _build_failure_mode_vector(eval_item.failure_modes, expected_len)
-            for eval_item in evaluations
-        ]
-    else:
-        vectors = [_build_feature_vector(eval_item, features) for eval_item in evaluations]
+    expected_len = len(criteria) * config["failure_modes_per_criterion"]
+    vectors = [
+        _build_failure_mode_vector(eval_item.failure_modes, expected_len)
+        for eval_item in evaluations
+    ]
 
     for idea_eval, vector in zip(evaluations, vectors):
-        idea_eval.feature_vector = vector
+        idea_eval.failure_mode_vector = vector
 
     for idx, idea_eval in enumerate(evaluations):
         computed = False
@@ -263,7 +226,6 @@ def run_full_pipeline(
 ) -> List[Dict[str, Any]]:
     sampled_ideas = sample_ideas(ideas, config["criteria_sample_size"])
     criteria = generate_criteria(sampled_ideas, config["k_criteria"], problem_statement)
-    features = generate_features(criteria, config["features_per_criterion"])
 
     document_store = []
     retrieved_context = ""
@@ -297,15 +259,14 @@ def run_full_pipeline(
         all_failure_modes.extend(batch_failure_modes)
 
     all_evaluations: List[IdeaEvaluation] = []
-    for batch in batches:
+    for batch, batch_failure_modes in zip(batches, all_failure_modes):
         batch_context = retrieved_context if config["rag_enabled"] else None
-        batch_results = evaluate_batch(batch, features, config["rating_levels"], batch_context)
+        batch_results = evaluate_batch(batch, batch_failure_modes, config["rating_levels"], batch_context)
+        for evaluation, failure_modes in zip(batch_results, batch_failure_modes):
+            evaluation.failure_modes = failure_modes
         all_evaluations.extend(batch_results)
 
-    for evaluation, failure_modes in zip(all_evaluations, all_failure_modes):
-        evaluation.failure_modes = failure_modes
-
-    final_evaluations = assign_lemon_labels(all_evaluations, features, criteria)
+    final_evaluations = assign_lemon_labels(all_evaluations, criteria)
     return [item.to_dict() for item in final_evaluations]
 
 
