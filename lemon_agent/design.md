@@ -18,11 +18,12 @@ Improve the Lemon Agent so that failure mode vectors are directly comparable acr
 
 ### Stage 2 — Universal Failure Mode Generation (redesigned)
 
-- Input: `List[Criterion]` + optional `purpose` + optional RAG/GBSM context
+- Input: `List[Criterion]` + optional `purpose` (the GBSM context — the goal, barrier, or cause being solved)
 - **No idea text is passed.** Failure modes are domain-level: what are the ways a solution in this domain could fail each criterion?
 - Output: `List[FailureMode]` — a shared set of M failure modes where M = `k_criteria × failure_modes_per_criterion`
 - The `risk` and `rationale` fields are removed from `FailureMode` — they are now idea-specific and live in Stage 3
-- If `purpose` is provided (a goal, barrier, or cause from the GBSM tree), the prompt opens with an `explain_purpose`-style preamble before listing criteria (mirrors `find_failure_modes_translated.py`)
+- If `purpose` is provided, the prompt opens with a preamble mirroring `find_failure_modes_translated.py`: the purpose is treated as the GBSM tree context (e.g. "We are trying to achieve the goal X" or "We are trying to overcome the barrier X"), followed by the criteria list. If omitted, the prompt uses only the criteria and any available domain context.
+- RAG/`gbsm_context` from `run_full_pipeline` is also forwarded here as supplementary context (same as today)
 
 ### Stage 3 — Batch Rating with Rationale (replaces evaluate_batch + old generate_failure_modes)
 
@@ -144,11 +145,24 @@ New `purpose` parameter. New stage flow:
 
 ---
 
+## Rating Levels (config-driven)
+
+`config["rating_levels"]` controls how many risk buckets the LLM uses in Stage 3. Only two values are valid:
+
+| `rating_levels` | Allowed risk values | Vector mapping |
+|---|---|---|
+| `2` | `"high"`, `"low"` | high → 1.0, low → -1.0 |
+| `3` | `"high"`, `"medium"`, `"low"` | high → 1.0, medium → 0.0, low → -1.0 |
+
+Any other value raises a `ValueError` at startup (in `run_full_pipeline` before any LLM calls). The `build_batch_rating_prompt` injects the valid values into the prompt so the LLM knows exactly what it is allowed to output (e.g. "Use only: high or low" for `rating_levels=2`, or "Use only: high, medium, or low" for `rating_levels=3`).
+
+---
+
 ## What Does Not Change
 
 - `generate_criteria` and `build_criteria_prompt`
 - `assign_lemon_labels` and `_is_pareto_dominated`
-- `config.py`
+- `config.py` structure (values are read, not restructured)
 - `rag.py`
 - `llm_client.py`
 - The `Criterion` model
