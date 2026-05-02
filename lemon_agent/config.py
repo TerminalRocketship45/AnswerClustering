@@ -5,7 +5,7 @@ config = {
     "failure_modes_per_criterion": 2,
     "failure_mode_style": "statement",  # statement or question
     "batch_size": 10,
-    "rating_levels": 2,
+    "rating_levels": 3,
     "vector_mode": "failure_modes",
     "rag_enabled": False,
     "embeddings_model": "text-embedding-3-large",
