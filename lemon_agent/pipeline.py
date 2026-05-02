@@ -11,13 +11,12 @@ from .llm_client import generate_json
 from .models import (
     Criterion,
     FailureMode,
-    FailureModeResult,
-    CriterionEvaluation,
+    FailureModeRating,
     IdeaEvaluation,
 )
 from .prompt_builder import (
     SYSTEM_PROMPT,
-    build_batch_evaluation_prompt,
+    build_batch_rating_prompt,
     build_criteria_prompt,
     build_failure_modes_prompt,
 )
@@ -34,41 +33,61 @@ def generate_criteria(
     ideas: List[str],
     k_criteria: int,
     problem_statement: Optional[str] = None,
+    criteria_list: Optional[List[str]] = None,
 ) -> List[Criterion]:
-    prompt = build_criteria_prompt(ideas, k_criteria, problem_statement)
-    raw_criteria = generate_json(
-        prompt,
-        model=config["model"],
-        system_instruction=SYSTEM_PROMPT,
-        max_output_tokens=config["max_llm_tokens"],
-    )
-
-    criteria: List[Criterion] = []
-    for index, item in enumerate(raw_criteria, start=1):
-        criterion_id = item.get("id") or f"C{index}"
-        criteria.append(
-            Criterion(
-                eid=criterion_id,
-                name=item.get("name", f"Criterion {index}"),
-                description=item.get("description", ""),
-            )
+    if criteria_list:
+        # For multi-agent, choose from list
+        prompt = build_criteria_prompt(ideas, k_criteria, problem_statement, criteria_list)
+        raw_criteria = generate_json(
+            prompt,
+            model=config["model"],
+            system_instruction=SYSTEM_PROMPT,
+            max_output_tokens=config["max_llm_tokens"],
         )
+        criteria: List[Criterion] = []
+        for index, item in enumerate(raw_criteria, start=1):
+            name = item.get("name", f"Criterion {index}")
+            criteria.append(
+                Criterion(
+                    eid=f"C{index}",
+                    name=name,
+                    description=item.get("description", ""),
+                )
+            )
+    else:
+        # Single-agent, generate
+        prompt = build_criteria_prompt(ideas, k_criteria, problem_statement)
+        raw_criteria = generate_json(
+            prompt,
+            model=config["model"],
+            system_instruction=SYSTEM_PROMPT,
+            max_output_tokens=config["max_llm_tokens"],
+        )
+
+        criteria: List[Criterion] = []
+        for index, item in enumerate(raw_criteria, start=1):
+            criterion_id = item.get("id") or f"C{index}"
+            criteria.append(
+                Criterion(
+                    eid=criterion_id,
+                    name=item.get("name", f"Criterion {index}"),
+                    description=item.get("description", ""),
+                )
+            )
     return criteria
 
 
 def generate_failure_modes(
-    ideas: List[str],
     criteria: List[Criterion],
     failure_modes_per_criterion: int,
     retrieved_context: Optional[str] = None,
-    hint: Optional[str] = None,
-) -> List[List[FailureMode]]:
+    purpose: Optional[str] = None,
+) -> List[FailureMode]:
     prompt = build_failure_modes_prompt(
-        ideas,
         criteria,
         failure_modes_per_criterion,
         retrieved_context,
-        hint,
+        purpose,
         style=config.get("failure_mode_style", "statement"),
     )
     raw_failure_modes = generate_json(
@@ -78,25 +97,58 @@ def generate_failure_modes(
         max_output_tokens=config["max_llm_tokens"],
     )
 
-    grouped: Dict[str, List[FailureMode]] = {idea: [] for idea in ideas}
+    failure_modes: List[FailureMode] = []
     for item in raw_failure_modes:
-        solution_name = item.get("solutionName", "")
-        if solution_name not in grouped:
-            grouped[solution_name] = []
-        grouped[solution_name].append(
+        failure_modes.append(
             FailureMode(
                 type=item.get("type", "failure"),
-                solutionName=solution_name,
                 criterionID=item.get("criterionID", ""),
                 criterionName=item.get("criterionName", ""),
                 name=item.get("name", ""),
                 description=item.get("description", ""),
-                risk=str(item.get("risk", "low")).strip().lower(),
-                rationale=item.get("rationale", ""),
             )
         )
+    return failure_modes
 
-    return [grouped.get(idea, []) for idea in ideas]
+
+def rate_ideas_batch(
+    ideas: List[str],
+    failure_modes: List[FailureMode],
+    retrieved_context: Optional[str] = None,
+    purpose: Optional[str] = None,
+) -> List[IdeaEvaluation]:
+    prompt = build_batch_rating_prompt(
+        ideas,
+        failure_modes,
+        purpose,
+        retrieved_context,
+        config["rating_levels"],
+        config["rationale"],
+    )
+    raw_evaluations = generate_json(
+        prompt,
+        model=config["model"],
+        system_instruction=SYSTEM_PROMPT,
+        max_output_tokens=config["max_llm_tokens"],
+    )
+
+    results: List[IdeaEvaluation] = []
+    for idea_result in raw_evaluations:
+        idea_text = idea_result.get("idea", "")
+        ratings_data = idea_result.get("ratings", [])
+        ratings: List[FailureModeRating] = []
+        for rating_item in ratings_data:
+            if isinstance(rating_item, str):
+                # No rationale
+                ratings.append(FailureModeRating(risk=rating_item.lower()))
+            else:
+                # With rationale
+                ratings.append(FailureModeRating(
+                    risk=rating_item.get("risk", "low").lower(),
+                    rationale=rating_item.get("rationale")
+                ))
+        results.append(IdeaEvaluation(idea=idea_text, ratings=ratings))
+    return results
 
 
 def _rating_to_score(rating: str, rating_levels: int) -> float:
@@ -169,7 +221,7 @@ def evaluate_batch(
 
 
 def _build_failure_mode_vector(
-    failure_modes: List[FailureMode],
+    ratings: List[FailureModeRating],
     expected_length: int,
 ) -> List[float]:
     risk_map = {
@@ -177,7 +229,7 @@ def _build_failure_mode_vector(
         "medium": 0.0,
         "low": -1.0,
     }
-    vector = [risk_map.get(fm.risk, 0.0) for fm in failure_modes]
+    vector = [risk_map.get(rating.risk, 0.0) for rating in ratings]
     if len(vector) < expected_length:
         vector.extend([0.0] * (expected_length - len(vector)))
     return vector[:expected_length]
@@ -192,15 +244,29 @@ def _is_pareto_dominated(target: List[float], candidate: List[float]) -> bool:
 def assign_lemon_labels(
     evaluations: List[IdeaEvaluation],
     criteria: List[Criterion],
+    shared_failure_modes: List[FailureMode],
 ) -> List[IdeaEvaluation]:
-    expected_len = len(criteria) * config["failure_modes_per_criterion"]
-    vectors = [
-        _build_failure_mode_vector(eval_item.failure_modes, expected_len)
+    expected_len = len(shared_failure_modes)
+    failure_vectors = [
+        _build_failure_mode_vector(eval_item.ratings, expected_len)
         for eval_item in evaluations
     ]
 
-    for idea_eval, vector in zip(evaluations, vectors):
-        idea_eval.failure_mode_vector = vector
+    fms_per_criterion = config["failure_modes_per_criterion"]
+    for eval_item, f_vector in zip(evaluations, failure_vectors):
+        if config["plot_mode"] == "criteria":
+            criteria_vector = []
+            for i in range(len(criteria)):
+                start = i * fms_per_criterion
+                end = start + fms_per_criterion
+                criterion_ratings = eval_item.ratings[start:end]
+                has_high = any(r.rating.risk == "high" for r in criterion_ratings)
+                criteria_vector.append(0.0 if has_high else 1.0)
+            eval_item.failure_mode_vector = criteria_vector
+        else:
+            eval_item.failure_mode_vector = f_vector
+
+    vectors = [eval_item.failure_mode_vector for eval_item in evaluations]
 
     for idx, idea_eval in enumerate(evaluations):
         computed = False
@@ -218,18 +284,35 @@ def assign_lemon_labels(
     return evaluations
 
 
+    return evaluations
+
+
 def run_full_pipeline(
     ideas: List[str],
     problem_statement: Optional[str] = None,
     documents: Optional[List[str]] = None,
     gbsm_context: Optional[str] = None,
+    purpose: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
+    # Validation
+    if config["rating_levels"] not in [2, 3]:
+        raise ValueError("rating_levels must be 2 or 3")
+    if config["architecture"] == "multi":
+        if not config["criteria_list"] or not config["fewshot_samples_path"]:
+            raise ValueError("For multi-agent, criteria_list and fewshot_samples_path must be provided")
+        # Load few-shot samples
+        import json
+        with open(config["fewshot_samples_path"], "r") as f:
+            fewshot_data = json.load(f)
+        # Assume fewshot_data is dict[criterion_name: list[dict]]
+
     sampled_ideas = sample_ideas(ideas, config["criteria_sample_size"])
-    criteria = generate_criteria(sampled_ideas, config["k_criteria"], problem_statement)
+    criteria_list = config["criteria_list"] if config["architecture"] == "multi" else None
+    criteria = generate_criteria(sampled_ideas, config["k_criteria"], problem_statement, criteria_list)
 
     document_store = []
     retrieved_context = ""
-    if config["rag_enabled"]:
+    if config["search_enabled"]:
         documents = documents or []
         if documents:
             document_store = build_document_store(documents, model_name=config["embeddings_model"])
@@ -240,33 +323,21 @@ def run_full_pipeline(
             retrieved_context = search_fallback(problem_statement or "", model_name=config["model"])
 
     if gbsm_context and retrieved_context:
-        failure_mode_context = f"{gbsm_context}\n\n{retrieved_context}"
+        context = f"{gbsm_context}\n\n{retrieved_context}"
     else:
-        failure_mode_context = gbsm_context or retrieved_context or None
+        context = gbsm_context or retrieved_context or None
 
-    batches: List[List[str]] = []
-    for i in range(0, len(ideas), config["batch_size"]):
-        batches.append(ideas[i : i + config["batch_size"]])
+    # Generate shared failure modes
+    shared_failure_modes = generate_failure_modes(criteria, config["failure_modes_per_criterion"], context, purpose)
 
-    all_failure_modes: List[List[FailureMode]] = []
-    for batch in batches:
-        batch_failure_modes = generate_failure_modes(
-            batch,
-            criteria,
-            config["failure_modes_per_criterion"],
-            failure_mode_context,
-        )
-        all_failure_modes.extend(batch_failure_modes)
-
+    # Rate all ideas in batches
     all_evaluations: List[IdeaEvaluation] = []
-    for batch, batch_failure_modes in zip(batches, all_failure_modes):
-        batch_context = retrieved_context if config["rag_enabled"] else None
-        batch_results = evaluate_batch(batch, batch_failure_modes, config["rating_levels"], batch_context)
-        for evaluation, failure_modes in zip(batch_results, batch_failure_modes):
-            evaluation.failure_modes = failure_modes
-        all_evaluations.extend(batch_results)
+    for i in range(0, len(ideas), config["batch_size"]):
+        batch = ideas[i : i + config["batch_size"]]
+        batch_evaluations = rate_ideas_batch(batch, shared_failure_modes, context, purpose)
+        all_evaluations.extend(batch_evaluations)
 
-    final_evaluations = assign_lemon_labels(all_evaluations, criteria)
+    final_evaluations = assign_lemon_labels(all_evaluations, criteria, shared_failure_modes)
     return [item.to_dict() for item in final_evaluations]
 
 

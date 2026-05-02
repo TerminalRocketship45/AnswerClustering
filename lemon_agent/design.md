@@ -158,11 +158,52 @@ Any other value raises a `ValueError` at startup (in `run_full_pipeline` before 
 
 ---
 
+## Architecture Options
+
+The system supports two architectures: "single" and "multi".
+
+### Single-Agent Architecture
+- One LLM handles all stages: criteria generation, failure mode generation, and batch rating.
+- Uses the redesigned pipeline with shared failure modes.
+- Default behavior.
+
+### Multi-Agent Architecture
+- Criteria agents: Separate LLM calls for each criterion to generate failure modes and rate ideas against them.
+- Requires `criteria_list` (list of possible criteria) and `fewshot_samples_path` (JSON file with examples).
+- Criteria are chosen from `criteria_list` based on discriminative power.
+- Failure modes are generated per criterion, then concatenated into shared list.
+- Rating is done by criteria agents in parallel (conceptually), but implemented sequentially for simplicity.
+
+For multi-agent, if `criteria_list` or `fewshot_samples_path` is None, raise error.
+
+---
+
+## Search and RAG
+
+`config["search_enabled"]` (bool, default False) enables RAG/search functionality, same as previous `rag_enabled`. If enabled, retrieves context for failure mode generation and rating.
+
+---
+
+## Rationale Requirement
+
+`config["rationale"]` (bool, default False) controls whether the LLM must provide a rationale for each risk rating. If True, output includes 2-3 sentence explanations; if False, only risk levels.
+
+---
+
+## Plotting Mode
+
+`config["plot_mode"]` ("failure_modes" or "criteria") determines the vector used for Pareto dominance and output.
+
+- "failure_modes": Vector of length M (total failure modes), values -1/0/1.
+- "criteria": Vector of length K (criteria), 0 if any failure mode under the criterion is "high", else 1.
+
+---
+
 ## What Does Not Change
 
-- `generate_criteria` and `build_criteria_prompt`
+- `generate_criteria` and `build_criteria_prompt` (updated for multi-agent)
 - `assign_lemon_labels` and `_is_pareto_dominated`
-- `config.py` structure (values are read, not restructured)
+- `config.py` structure (new params added)
 - `rag.py`
 - `llm_client.py`
 - The `Criterion` model

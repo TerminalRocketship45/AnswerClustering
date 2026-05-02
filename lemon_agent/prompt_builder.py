@@ -15,15 +15,27 @@ def build_criteria_prompt(
     ideas: List[str],
     k_criteria: int,
     problem_statement: Optional[str] = None,
+    criteria_list: Optional[List[str]] = None,
 ) -> str:
-    prompt_lines = [
-        "Given the sample candidate ideas below, identify the most discriminative evaluation criteria for this set.",
-        "Discriminative criteria are the dimensions that best separate good ideas from weak ones in this domain.",
-        "Avoid redundant or overlapping criteria. Do not invent a problem statement if none is provided.",
-    ]
-
-    if problem_statement:
-        prompt_lines.append(f"Problem statement: {problem_statement}")
+    if criteria_list:
+        prompt_lines = [
+            "Given the sample candidate ideas below and the list of possible criteria, choose the most discriminative evaluation criteria for this set.",
+            "Discriminative criteria are the dimensions that best separate good ideas from weak ones in this domain.",
+            "Choose from the provided list. Avoid redundant or overlapping criteria.",
+        ]
+        if problem_statement:
+            prompt_lines.append(f"Problem statement: {problem_statement}")
+        prompt_lines.append("Possible criteria:")
+        for crit in criteria_list:
+            prompt_lines.append(f"- {crit}")
+    else:
+        prompt_lines = [
+            "Given the sample candidate ideas below, identify the most discriminative evaluation criteria for this set.",
+            "Discriminative criteria are the dimensions that best separate good ideas from weak ones in this domain.",
+            "Avoid redundant or overlapping criteria. Do not invent a problem statement if none is provided.",
+        ]
+        if problem_statement:
+            prompt_lines.append(f"Problem statement: {problem_statement}")
 
     prompt_lines.append("Sample ideas:")
     for index, idea in enumerate(ideas, start=1):
@@ -41,21 +53,26 @@ def build_criteria_prompt(
 
 
 def build_failure_modes_prompt(
-    ideas: List[str],
     criteria: List[Criterion],
     failure_modes_per_criterion: int,
     retrieved_context: Optional[str] = None,
-    hint: Optional[str] = None,
+    purpose: Optional[str] = None,
     style: str = "statement",
 ) -> str:
     prompt_lines = [
         "You are a rigorous failure-mode analyst.",
-        "For each candidate solution below, identify distinct failure modes tied to the evaluation criteria.",
-        "Use the solution text and any provided context to decide how the solution could fail each criterion.",
-        "If GBSM context is provided, include it explicitly in your analysis of goals, barriers, or causes.",
+        "For each evaluation criterion, identify distinct failure modes that could cause a solution to fail that criterion.",
+        "Failure modes are domain-level: what are the ways a solution in this domain could fail each criterion?",
         "Return only valid JSON in the format described. Do not include any explanatory text outside the JSON array.",
         "",
     ]
+
+    if purpose:
+        prompt_lines.extend([
+            f"We are trying to {purpose}.",
+            "Consider this context when generating failure modes.",
+            "",
+        ])
 
     if retrieved_context:
         prompt_lines.extend([
@@ -67,17 +84,6 @@ def build_failure_modes_prompt(
     prompt_lines.append("Criteria:")
     for criterion in criteria:
         prompt_lines.append(f"- {criterion.eid}: {criterion.name} — {criterion.description}")
-
-    prompt_lines.append("")
-    prompt_lines.append("Solutions:")
-    for index, idea in enumerate(ideas, start=1):
-        prompt_lines.append(f"{index}. {idea}")
-
-    if hint:
-        prompt_lines.extend([
-            "",
-            f"Hint: {hint}",
-        ])
 
     if style == "question":
         prompt_lines.append(
@@ -94,18 +100,14 @@ def build_failure_modes_prompt(
         "[",
         "  {",
         "    \"type\": \"failure\",",
-        "    \"solutionName\": \"Name of the candidate solution\",",
         "    \"criterionID\": \"C1\",",
         "    \"criterionName\": \"Short criterion name\",",
         "    \"name\": \"Short failure mode name\",",
-        "    \"description\": \"Two to three sentence description of the failure mode.\",
-        "    \"risk\": \"high|medium|low\",",
-        "    \"rationale\": \"Two to three sentence explanation of the risk rating.\",
+        "    \"description\": \"Two to three sentence description of the failure mode.\",",
         "  },",
         "  ...",
         "]",
-        f"Generate exactly {failure_modes_per_criterion} failure modes for each criterion and each solution.",
-        "Use high/medium/low risk ratings.",
+        f"Generate exactly {failure_modes_per_criterion} failure modes for each criterion.",
     ])
     return "\n".join(prompt_lines)
 
@@ -166,5 +168,74 @@ def build_batch_evaluation_prompt(
         "]",
         f"Use the rating scale: {rating_scale}.",
         "Keep the output JSON clean and free of explanatory text outside the JSON structure.",
+    ])
+    return "\n".join(prompt_lines)
+
+
+def build_batch_rating_prompt(
+    ideas: List[str],
+    failure_modes: List[FailureMode],
+    purpose: Optional[str] = None,
+    retrieved_context: Optional[str] = None,
+    rating_levels: int = 3,
+    rationale_enabled: bool = False,
+) -> str:
+    allowed_risks = ["high", "medium", "low"] if rating_levels == 3 else ["high", "low"]
+    prompt_lines = [
+        "You are evaluating a batch of ideas against shared failure modes.",
+        "Rate each idea against each failure mode independently, but use the batch for calibration.",
+        "For each idea, provide a risk rating for every failure mode in the same order.",
+        "Return only valid JSON.",
+        "",
+    ]
+
+    if purpose:
+        prompt_lines.extend([
+            f"Context: We are trying to {purpose}.",
+            "",
+        ])
+
+    if retrieved_context:
+        prompt_lines.extend([
+            "Retrieved context:",
+            retrieved_context,
+            "",
+        ])
+
+    prompt_lines.append("Ideas:")
+    for index, idea in enumerate(ideas, start=1):
+        prompt_lines.append(f"{index}. {idea}")
+
+    prompt_lines.append("")
+    prompt_lines.append("Failure modes:")
+    for index, fm in enumerate(failure_modes, start=1):
+        prompt_lines.append(f"{index}. [{fm.criterionID}] {fm.criterionName} — {fm.description}")
+
+    prompt_lines.extend([
+        "",
+        "Output schema:",
+        "[",
+        "  {",
+        "    \"idea\": \"Idea text\",",
+        "    \"ratings\": [",
+    ])
+    if rationale_enabled:
+        prompt_lines.extend([
+            "      {",
+            "        \"risk\": \"high|medium|low\",",
+            "        \"rationale\": \"2-3 sentence explanation\"",
+            "      },",
+        ])
+    else:
+        prompt_lines.extend([
+            "      \"high|medium|low\",",
+        ])
+    prompt_lines.extend([
+        "      ...",
+        "    ]",
+        "  },",
+        "  ...",
+        "]",
+        f"Use only: {', '.join(allowed_risks)}.",
     ])
     return "\n".join(prompt_lines)
