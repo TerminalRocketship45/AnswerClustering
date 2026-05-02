@@ -2,7 +2,7 @@ from google import genai
 from google.genai import types
 import os
 
-os.environ['GEMINI_API_KEY'] = INSERT YOUR OWN
+os.environ['GEMINI_API_KEY'] = ...
 
 temodel = "text-embedding-3-large"
 # see platform.openai.com/docs/guides/embeddings

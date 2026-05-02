@@ -65,6 +65,76 @@ def build_feature_prompt(features_per_criterion: int, criteria: List[Criterion])
     return "\n".join(prompt_lines)
 
 
+def build_failure_modes_prompt(
+    ideas: List[str],
+    criteria: List[Criterion],
+    failure_modes_per_criterion: int,
+    retrieved_context: Optional[str] = None,
+    hint: Optional[str] = None,
+    style: str = "statement",
+) -> str:
+    prompt_lines = [
+        "You are a rigorous failure-mode analyst.",
+        "For each candidate solution below, identify distinct failure modes tied to the evaluation criteria.",
+        "Use the solution text and any provided context to decide how the solution could fail each criterion.",
+        "If GBSM context is provided, include it explicitly in your analysis of goals, barriers, or causes.",
+        "Return only valid JSON in the format described. Do not include any explanatory text outside the JSON array.",
+        "",
+    ]
+
+    if retrieved_context:
+        prompt_lines.extend([
+            "Context:",
+            retrieved_context,
+            "",
+        ])
+
+    prompt_lines.append("Criteria:")
+    for criterion in criteria:
+        prompt_lines.append(f"- {criterion.eid}: {criterion.name} — {criterion.description}")
+
+    prompt_lines.append("")
+    prompt_lines.append("Solutions:")
+    for index, idea in enumerate(ideas, start=1):
+        prompt_lines.append(f"{index}. {idea}")
+
+    if hint:
+        prompt_lines.extend([
+            "",
+            f"Hint: {hint}",
+        ])
+
+    if style == "question":
+        prompt_lines.append(
+            "Express each failure mode as a concrete evaluation question that captures how the solution could fail the criterion."
+        )
+    else:
+        prompt_lines.append(
+            "Express each failure mode as a concise failure statement describing how the solution can fail the criterion."
+        )
+
+    prompt_lines.extend([
+        "",
+        "Output schema:",
+        "[",
+        "  {",
+        "    \"type\": \"failure\",",
+        "    \"solutionName\": \"Name of the candidate solution\",",
+        "    \"criterionID\": \"C1\",",
+        "    \"criterionName\": \"Short criterion name\",",
+        "    \"name\": \"Short failure mode name\",",
+        "    \"description\": \"Two to three sentence description of the failure mode.\",
+        "    \"risk\": \"high|medium|low\",",
+        "    \"rationale\": \"Two to three sentence explanation of the risk rating.\",
+        "  },",
+        "  ...",
+        "]",
+        f"Generate exactly {failure_modes_per_criterion} failure modes for each criterion and each solution.",
+        "Use high/medium/low risk ratings.",
+    ])
+    return "\n".join(prompt_lines)
+
+
 def build_batch_evaluation_prompt(
     ideas: List[str],
     features: List[Feature],

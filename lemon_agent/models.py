@@ -15,6 +15,18 @@ class Criterion:
 
 
 @dataclass
+class FailureMode:
+    type: str
+    solutionName: str
+    criterionID: str
+    criterionName: str
+    name: str
+    description: str
+    risk: Literal["high", "medium", "low"]
+    rationale: str
+
+
+@dataclass
 class Feature:
     criterion_id: str
     criterion_name: str
@@ -39,6 +51,7 @@ class CriterionEvaluation:
 class IdeaEvaluation:
     idea: str
     evaluations: List[CriterionEvaluation] = field(default_factory=list)
+    failure_modes: List[FailureMode] = field(default_factory=list)
     feature_vector: List[float] = field(default_factory=list)
     is_lemon: bool = False
 
@@ -59,6 +72,19 @@ class IdeaEvaluation:
                     ],
                 }
                 for ev in self.evaluations
+            ],
+            "failure_modes": [
+                {
+                    "type": fm.type,
+                    "solutionName": fm.solutionName,
+                    "criterionID": fm.criterionID,
+                    "criterionName": fm.criterionName,
+                    "name": fm.name,
+                    "description": fm.description,
+                    "risk": fm.risk,
+                    "rationale": fm.rationale,
+                }
+                for fm in self.failure_modes
             ],
             "feature_vector": self.feature_vector,
             "is_lemon": self.is_lemon,
